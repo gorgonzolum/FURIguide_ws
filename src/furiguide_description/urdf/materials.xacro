@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot>
+  <material name="Maroon">
+    <color rgba="${140/255} ${29/255} ${64/255} 1.0"/>
+  </material>
+
+  <material name="Gold">
+    <color rgba="${255/255} ${198/255} ${39/255} 1.0"/>
+  </material>
+
+  <material name="orange">
+    <color rgba="${255/255} ${108/255} ${10/255} 1.0"/>
+  </material>
+</robot>

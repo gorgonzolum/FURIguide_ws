@@ -3,6 +3,8 @@
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" value="$(find furiguide_gazebo)/worlds/furiguide.world"/>
     <arg name="gui" value="true"/>
+    <arg name="verbose" value="true"/>
+    <arg name="debug" value="true"/>
   </include>
 
   <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find furiguide_description)/urdf/furiguide.xacro'"/>

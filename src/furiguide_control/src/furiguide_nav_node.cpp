@@ -21,13 +21,15 @@ ros::Publisher steer_twist_pub;
 geometry_msgs::PoseWithCovariance current_pose;
 geometry_msgs::PoseStamped current_waypoint_pose;
 int current_waypoint_id = -1;
+
+bool arrivedAtWaypoint = false;
 bool hasWaypoint = false;
 
 // Populated by the tf listener
 tf2_ros::Buffer tfBuffer;
 
 double shortestAngle(double A, double B) {
-  double diff = A - B;
+  double diff = fmod(A - B, 2*M_PI);
 
   if (diff > M_PI)
     return diff - 2*M_PI;
@@ -58,6 +60,7 @@ void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
   try{
     transformStamped = tfBuffer.lookupTransform("odom", "camera_link_optical", tag.pose.header.stamp);
     tf2::doTransform(tag.pose, current_waypoint_pose, transformStamped);
+    arrivedAtWaypoint = false;
     hasWaypoint = true;
   }
   catch (tf2::TransformException &ex) {
@@ -70,22 +73,36 @@ void steerToWaypoint() {
   geometry_msgs::Twist twist;
   
   ROS_INFO("Correcting robot angle to waypoint %d", current_waypoint_id);
-  // TODO: use something more sophitisticated to correct and drive forward
-  
+ 
+  // translate geometry_msgs into tf2 datatypes
   tf2::Quaternion odomQuat, waypointQuat;
+  tf2::Vector3 posVec, wayVec, diffVec;
+
   tf2::fromMsg(current_pose.pose.orientation, odomQuat);
   tf2::fromMsg(current_waypoint_pose.pose.orientation, waypointQuat);
+  tf2::convert(current_pose.pose.position, posVec);
+  tf2::convert(current_waypoint_pose.pose.position, wayVec);
+  diffVec = wayVec - posVec;
 
   double waypointYaw = correctAngle(tf2::impl::getYaw(waypointQuat), 2*M_PI);
   double odomYaw = correctAngle(tf2::impl::getYaw(odomQuat), 2*M_PI);
 
   double dPos = tf2::tf2Distance2(posVec, wayVec);
   double dTheta = 0;
-  dTheta = -1 * shortestAngle(odomYaw, waypointYaw); // the differential drive controller in gazebo has negative as CW (???)
+  if (dPos < 0.2 || arrivedAtWaypoint) { // match waypoint heading
+    dTheta = shortestAngle(odomYaw, waypointYaw);
+    arrivedAtWaypoint = true;
+  } else { // approach waypoint
+    double tagHeading = atan2(diffVec.y(), diffVec.x());
+    dTheta = shortestAngle(odomYaw, tagHeading);
+    ROS_INFO("Drive to Position: %f, %f, %f", (wayVec - posVec).x(), (wayVec - posVec).y(), (wayVec-posVec).z());
+    ROS_INFO("odom Quat: %f, %f, %f", odomQuat.getAxis().x(), odomQuat.getAxis().y(), odomQuat.getAxis().z());
+  }
   
-  ROS_INFO("Tag: %f, Odom: %f, Angle: %f", waypointYaw, odomYaw, dTheta);
-  twist.linear.x = 0.05; 
-  twist.angular.z = dTheta * 0.5;
+  // Correct for angle and drive forward
+  ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f", waypointYaw, odomYaw, dPos, dTheta);
+  twist.linear.x = 0.5; 
+  twist.angular.z = -1 * dTheta * 0.8; // ROS yaw is CCW increasing, MUST * -1 to account for this 
 
   steer_twist_pub.publish(twist);
 }

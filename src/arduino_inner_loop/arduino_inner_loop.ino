@@ -1,21 +1,23 @@
-/* Arduino Inner Loop Control Code
- * Based on Enhanced Thunder Tumbler 2 Code
- * from "Modeling and Control of a Longitudinal Platoon" (Zhichao Li)
- * enhanced with ROS integration
- * used as an interim to accelerate hardware prototyping
-*/
+// Arduino Inner Loop Control Code
+// Based on Enhanced Thunder Tumbler 2 Code
+// from "Modeling and Control of a Longitudinal Platoon" (Zhichao Li)
+// enhanced with ROS integration
+// used as an interim to accelerate hardware prototyping
+
+// ROS header must be included first
+#include <ros.h>
+#include <geometry_msgs/Twist.h>
+#include <nav_msgs/Odometry.h>
+
 #include <Adafruit_BNO055.h>
 #include <Adafruit_MotorShield.h>
 #include <Encoder.h>
 #include <math.h>
-//#include <ros.h>
 
 Adafruit_BNO055 imu_bno055 = Adafruit_BNO055();
 Adafruit_MotorShield AFMS = Adafruit_MotorShield(); 
 Adafruit_DCMotor *motorL = AFMS.getMotor(3);
 Adafruit_DCMotor *motorR = AFMS.getMotor(2);
-
-//ros::NodeHandle arduino_nh;
 
 #define DEBUG
 // Control
@@ -37,10 +39,13 @@ void setup() {
   Serial.begin(9600);
 
   setupIMU();
+  Serial.print("IMU Setup Complete");
   setupMotors();
+  Serial.print("Motor Setup Complete");
+  setupROS();
+  Serial.print("ROS Initialized");
 
   delay(1000);
-  Serial.print("Motor Setup Complete");
 }
 
 void setupMotors() {
@@ -330,10 +335,6 @@ void ctrl_loop_reset () {
   wr_dsr_filtered_p = 0;
 }
 
-//void cb_cmdVelMsgRecv(geometry_msgs::Twist &msg) {
-//  ctrl_update_wd(msg.linear.v, msg.angular.z);
-//}
-
 void update_motors() {
   DEBUG_PRINT("PWML: "); DEBUG_PRINT(pwml);
   DEBUG_PRINT(" PWMR: "); DEBUG_PRINT(pwmr);
@@ -352,20 +353,42 @@ void update_motors() {
     motorR->run(BACKWARD);
 }
 
+// --- ROS ---
+ros::NodeHandle arduino_nh;
+
+// Pub/Sub Declarations
+void cmd_velMsgRecv_cb(geometry_msgs::Twist &msg);
+ros::Subscriber<geometry_msgs::Twist> velSub("cmd_vel", cmd_velMsgRecv_cb);
+
+nav_msgs::Odometry odom_msg;
+ros::Publisher odomPub("odom", &odom_msg);
+
+// Setup
+void setupROS() {
+  arduino_nh.initNode();
+  arduino_nh.subscribe(velSub);
+  arduino_nh.advertise(odomPub);
+}
+
+// Pub/Sub Callbacks
+void cmd_velMsgRecv_cb(geometry_msgs::Twist& msg) {
+  ctrl_update_wd(msg.linear.x, msg.angular.z);
+}
+
 void publishOdom() {
 }
+
 
 unsigned long time = 0;
 unsigned long time_p = 0;
 unsigned long sample_time = ctrl_loop_period; // T = 100 msec
-
 void loop() {
   // 10Hz Update Rate
   time = millis(); 
   if (time - time_p > sample_time) {
     time_p = time;
     publishOdom();
-    //arduino_nh.spinOnce();
+    arduino_nh.spinOnce();
 
     ctrl_get_current_wl_wr();
     ctrl_get_theta_accx_omega();

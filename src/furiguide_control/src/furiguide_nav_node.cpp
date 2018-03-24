@@ -25,6 +25,10 @@ int current_waypoint_id = -1;
 bool arrivedAtWaypoint = false;
 bool hasWaypoint = false;
 
+// Guided
+unsigned int GUIDED_TAG_ID = 128;
+geometry_msgs::PoseStamped current_guided_pose;
+
 // Populated by the tf listener
 tf2_ros::Buffer tfBuffer;
 
@@ -40,33 +44,53 @@ double shortestAngle(double A, double B) {
 }
 
 void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
-  ROS_INFO("Processing Waypoint: %d", tag.id);
-
-  // ignore extraneous waypoints (avoid backtracking or seeing too far)
-  if (tag.id < current_waypoint_id || tag.id > current_waypoint_id + 1) {
-    return; // ignore this tag
-  }
-
-  // look for the next waypoint
-  if (tag.id == current_waypoint_id + 1) {
-    current_waypoint_id++;
-  }
-
   geometry_msgs::TransformStamped transformStamped;
 
-  // look up the transform of the camera from tf2, then store the pose relative to the base_link
-  // be careful to get the transform at the time of tag detection for accurate positioning information
-  // this effect is especially bad in simulation when manually positioning the robot
-  try{
-    transformStamped = tfBuffer.lookupTransform("odom", "camera_link_optical", tag.pose.header.stamp);
-    tf2::doTransform(tag.pose, current_waypoint_pose, transformStamped);
-    arrivedAtWaypoint = false;
-    hasWaypoint = true;
+  if (tag.id == GUIDED_TAG_ID) {
+    ROS_INFO("Processing Guided Tag: %d");
+
+    try{
+      transformStamped = tfBuffer.lookupTransform("odom", "rear_camera_link_optical", tag.pose.header.stamp);
+      tf2::doTransform(tag.pose, current_guided_pose, transformStamped);
+    }
+    catch (tf2::TransformException &ex) {
+      ROS_WARN("%s", ex.what());
+      ros::Duration(1.0).sleep();
+    }
+  } else {
+    ROS_INFO("Processing Waypoint: %d", tag.id);
+
+    // ignore extraneous waypoints (avoid backtracking or seeing too far)
+    if (tag.id < current_waypoint_id || tag.id > current_waypoint_id + 1) {
+      return; // ignore this tag
+    }
+
+    // look for the next waypoint
+    if (tag.id == current_waypoint_id + 1) {
+      current_waypoint_id++;
+    }
+
+    // look up the transform of the camera from tf2, then store the pose relative to the base_link
+    // be careful to get the transform at the time of tag detection for accurate positioning information
+    // this effect is especially bad in simulation when manually positioning the robot
+    try{
+      transformStamped = tfBuffer.lookupTransform("odom", "camera_link_optical", tag.pose.header.stamp);
+      tf2::doTransform(tag.pose, current_waypoint_pose, transformStamped);
+      arrivedAtWaypoint = false;
+      hasWaypoint = true;
+    }
+    catch (tf2::TransformException &ex) {
+      ROS_WARN("%s", ex.what());
+      ros::Duration(1.0).sleep();
+    }
   }
-  catch (tf2::TransformException &ex) {
-    ROS_WARN("%s", ex.what());
-    ros::Duration(1.0).sleep();
-  }
+}
+
+double distanceXY2(tf2::Vector3 a, tf2::Vector3 b) {
+  double diffx = b.x() - a.x();
+  double diffy = b.y() - a.y();
+
+  return diffx*diffx + diffy+diffy;
 }
 
 void steerToWaypoint() {
@@ -76,12 +100,14 @@ void steerToWaypoint() {
  
   // translate geometry_msgs into tf2 datatypes
   tf2::Quaternion odomQuat, waypointQuat;
-  tf2::Vector3 posVec, wayVec, diffVec;
+  tf2::Vector3 posVec, wayVec, diffVec, guideVec;
 
   tf2::fromMsg(current_pose.pose.orientation, odomQuat);
   tf2::fromMsg(current_waypoint_pose.pose.orientation, waypointQuat);
   tf2::convert(current_pose.pose.position, posVec);
   tf2::convert(current_waypoint_pose.pose.position, wayVec);
+  tf2::convert(current_guided_pose.pose.position, guideVec);
+
   diffVec = wayVec - posVec;
 
   double waypointYaw = correctAngle(tf2::impl::getYaw(waypointQuat), 2*M_PI);
@@ -99,9 +125,13 @@ void steerToWaypoint() {
     ROS_INFO("odom Quat: %f, %f, %f", odomQuat.getAxis().x(), odomQuat.getAxis().y(), odomQuat.getAxis().z());
   }
   
+  // Adjust Linear speed based on distance from guided target
+  double dGuided_2 = distanceXY2(posVec, guideVec);
+  double linearSpeed = std::min(1.0, std::max(0.0, dGuided_2 * 0.5));
+
   // Correct for angle and drive forward
   ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f", waypointYaw, odomYaw, dPos, dTheta);
-  twist.linear.x = 0.5; 
+  twist.linear.x = linearSpeed; 
   twist.angular.z = -1 * dTheta * 0.8; // ROS yaw is CCW increasing, MUST * -1 to account for this 
 
   steer_twist_pub.publish(twist);

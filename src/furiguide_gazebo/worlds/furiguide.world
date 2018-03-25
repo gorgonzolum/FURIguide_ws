@@ -348,28 +348,6 @@
           <wrench>0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='furiguide'>
-        <pose frame=''>0.005574 -0.031058 0.079998 0 -0.033517 0.130032</pose>
-        <scale>1 1 1</scale>
-        <link name='chassis'>
-          <pose frame=''>0.005574 -0.031058 0.079998 0 -0.033517 0.130032</pose>
-          <velocity>5.5e-05 -1.6e-05 -6e-06 -4.9e-05 -0.000502 0.000524</velocity>
-          <acceleration>-0.072706 -0.031003 -0.0358 -0.122433 -0.951764 0.306595</acceleration>
-          <wrench>-0.363533 -0.155017 -0.178999 0 -0 0</wrench>
-        </link>
-        <link name='left_wheel'>
-          <pose frame=''>-0.013876 0.117677 0.079999 3.7e-05 -0.272877 0.130026</pose>
-          <velocity>-3.9e-05 -2.2e-05 -0.000138 0.000315 -0.000958 0.00054</velocity>
-          <acceleration>-0.055849 -0.042939 -0.302297 -2.45412 -1.46992 -2.72061</acceleration>
-          <wrench>-0.013962 -0.010735 -0.075574 0 -0 0</wrench>
-        </link>
-        <link name='right_wheel'>
-          <pose frame=''>0.025024 -0.179793 0.079999 -6.3e-05 0.639369 0.13001</pose>
-          <velocity>8.2e-05 -1.4e-05 -0.00012 0.0001 0.001808 0.00031</velocity>
-          <acceleration>-0.037581 -0.05219 -0.261689 0.438799 1.27954 -0.30088</acceleration>
-          <wrench>-0.009395 -0.013048 -0.065422 0 -0 0</wrench>
-        </link>
-      </model>
       <model name='ground_plane'>
         <pose frame=''>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>

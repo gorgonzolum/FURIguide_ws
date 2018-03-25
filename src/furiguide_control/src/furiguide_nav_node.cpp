@@ -47,10 +47,10 @@ void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
   geometry_msgs::TransformStamped transformStamped;
 
   if (tag.id == GUIDED_TAG_ID) {
-    ROS_INFO("Processing Guided Tag: %d");
+    ROS_INFO("Processing Guided Tag: %d", tag.id);
 
     try{
-      transformStamped = tfBuffer.lookupTransform("odom", "rear_camera_link_optical", tag.pose.header.stamp);
+      transformStamped = tfBuffer.lookupTransform("odom", "camera_rear_link_optical", tag.pose.header.stamp);
       tf2::doTransform(tag.pose, current_guided_pose, transformStamped);
     }
     catch (tf2::TransformException &ex) {
@@ -125,12 +125,13 @@ void steerToWaypoint() {
     ROS_INFO("odom Quat: %f, %f, %f", odomQuat.getAxis().x(), odomQuat.getAxis().y(), odomQuat.getAxis().z());
   }
   
+  #define GUIDED_MAX 2.0
   // Adjust Linear speed based on distance from guided target
   double dGuided_2 = distanceXY2(posVec, guideVec);
-  double linearSpeed = std::min(1.0, std::max(0.0, dGuided_2 * 0.5));
+  double linearSpeed = std::min(1.0, std::max(0.0, (GUIDED_MAX - dGuided_2) * 0.5));
 
   // Correct for angle and drive forward
-  ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f", waypointYaw, odomYaw, dPos, dTheta);
+  ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f, Linear: %f", waypointYaw, odomYaw, dPos, dTheta, linearSpeed);
   twist.linear.x = linearSpeed; 
   twist.angular.z = -1 * dTheta * 0.8; // ROS yaw is CCW increasing, MUST * -1 to account for this 
 

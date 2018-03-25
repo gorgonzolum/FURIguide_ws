@@ -3,7 +3,8 @@
        Start an apriltag node using the default settings
        to connect to an OpenNI device (e.g. Kinect). 
   -->
-  <node pkg="apriltags_ros" type="apriltag_detector_node" name="apriltags" output="screen">
+  <arg name="camera_name" />
+  <node pkg="apriltags_ros" type="apriltag_detector_node" name="apriltags_$(arg camera_name)" output="screen">
     <param name="~default_tag_size" value="0.037" />
 
     <param name="~viewer" value="false" />
@@ -13,33 +14,22 @@
     <param name="~marker_thickness" value="0.02" />
 
     <rosparam command="delete" param="tag_data" />
-    <rosparam param="/apriltags/tag_data">
-      "1": 
-        size: 0.035
-      "2":
-        size: 0.048
-    </rosparam>
-    <rosparam param="/apriltags/tag_descriptions">[
+    <rosparam param="/apriltags_$(arg camera_name)/tag_descriptions">[
         {id: 0, size: 0.081},
         {id: 1, size: 0.081},
         {id: 2, size: 0.081},
         {id: 3, size: 0.081},
         {id: 4, size: 0.081},
         {id: 5, size: 0.081},
-        {id: 6, size: 0.054},
-        {id: 7, size: 0.054},
-        {id: 8, size: 0.054},
-        {id: 9, size: 0.054},
-        {id: 10, size: 0.054},
-        {id: 11, size: 0.054},
-        {id: 12, size: 0.054},
-        {id: 13, size: 0.054},
-        {id: 14, size: 0.054},
-        {id: 15, size: 0.054},
+        {id: 6, size: 0.081},
+        {id: 7, size: 0.081},
+        {id: 8, size: 0.081},
+        {id: 9, size: 0.081},
+        {id: 128, size: 0.081},
     ]
     </rosparam>
     
-    <remap from="image_rect" to="/camera1/image_raw"/>
-    <remap from="camera_info" to="/camera1/camera_info"/>
+    <remap from="image_rect" to="/$(arg camera_name)/image_raw"/>
+    <remap from="camera_info" to="/$(arg camera_name)/camera_info"/>
   </node>
 </launch>

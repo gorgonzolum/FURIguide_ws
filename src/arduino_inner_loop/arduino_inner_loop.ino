@@ -42,8 +42,8 @@ void setup() {
   Serial.print("IMU Setup Complete");
   setupMotors();
   Serial.print("Motor Setup Complete");
-  setupROS();
-  Serial.print("ROS Initialized");
+  //setupROS();
+  //Serial.print("ROS Initialized");
 
   delay(1000);
 }
@@ -124,13 +124,13 @@ volatile long ctrl_loop_period = CTRL_LOOP_PERIOD;
 // PID Control Paramters
 float prefilter_co = 0.167;
 
-float kp_left = 0.29;
-float ki_left = 0.58;
-float kd_left = 0;
+float kp_left = 0.25;
+float ki_left = 0.1;
+float kd_left = 0.0;
 
-float kp_right = 0.29;
-float ki_right = 0.58;
-float kd_right = 0;
+float kp_right = 0.25;
+float ki_right = 0.1;
+float kd_right = 0.0;
 
 float roll_off_co = 0.8; // 40 / (s+40)
 
@@ -180,7 +180,7 @@ void ctrl_get_theta_accx_omega() {
   imu_accy = imu_get_accy();
   imu_omega = imu_get_omega();
 
-  DEBUG_PRINT("IMU Theta: "); DEBUG_PRINT(imu_theta); DEBUG_PRINT("\r\n");
+  //DEBUG_PRINT("IMU Theta: "); DEBUG_PRINT(imu_theta); DEBUG_PRINT("\r\n");
 }
 
 void ctrl_get_current_wl_wr() {
@@ -297,15 +297,27 @@ void ctrl_inner_loop() {
                           err_wr, err_wr_p, err_wr_pp,
                           kp_right, ki_right, kd_right,
                           &pwmr_up, &pwmr_ui, &pwmr_ud,
-                          (float)ctrl_loop_period / 1000.0); 
-  
+                          (float)ctrl_loop_period / 1000.0);
+
+  //pwml_out = pwml_out_p + (int)(err_wl * PWM_D2A_FACTOR * 0.2);
+  //pwmr_out = pwmr_out_p + (int)(err_wr * PWM_D2A_FACTOR * 0.2);
   DEBUG_PRINT("pwml_out, pwmr_out: "); DEBUG_PRINT(pwml_out); DEBUG_PRINT(", "); DEBUG_PRINT(pwmr_out);
   DEBUG_PRINT("\r\n");
 
   pwml = (int) ctrl_output_rolloff(pwml_out_p, pwml_out);
-  pwml = constrain(pwml, -20, 255);
+  pwml = constrain(pwml, -30, 225);
   pwmr = (int) ctrl_output_rolloff(pwmr_out_p, pwmr_out);
-  pwmr = constrain(pwmr, -20, 255);
+  pwmr = constrain(pwmr, -30, 225);
+
+  if (stop_action_level > 0) {
+    if (stop_action_level <= 1) {
+      pwml = 0;
+      pwmr = 0;
+    } else {
+      pwml = 0;
+      pwmr = 0;
+    }
+  }
 }
 
 void ctrl_inner_loop_update() {
@@ -393,7 +405,8 @@ void loop() {
     ctrl_get_current_wl_wr();
     ctrl_get_theta_accx_omega();
 
-    ctrl_update_wd(0.5, 0.0);
+    if (time > 3000)
+      ctrl_update_wd(0.5, 1.5);
 
     ctrl_inner_loop();
     update_motors();

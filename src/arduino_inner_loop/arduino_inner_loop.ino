@@ -6,8 +6,13 @@
 
 // ROS header must be included first
 #include <ros.h>
+
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Quaternion.h>
+#include <sensor_msgs/Imu.h>
 #include <nav_msgs/Odometry.h>
+
+#include <tf/transform_broadcaster.h>
 
 #include <Adafruit_BNO055.h>
 #include <Adafruit_MotorShield.h>
@@ -19,7 +24,10 @@ Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *motorL = AFMS.getMotor(3);
 Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 
-#define DEBUG
+// DEBUG Flag
+// Disables ROS integration and prints debug data to serial out at 9600 baud
+//#define DEBUG
+
 // Control
 int PWM_D2A_FACTOR = 49;
 int CTRL_LOOP_PERIOD = 100;
@@ -36,14 +44,18 @@ float wheel_radius = 0.05;
 #endif
 
 void setup() {
+#ifdef DEBUG
   Serial.begin(9600);
+#endif
 
   setupIMU();
-  Serial.print("IMU Setup Complete");
+  DEBUG_PRINT("IMU Setup Complete");
   setupMotors();
-  Serial.print("Motor Setup Complete");
-  //setupROS();
-  //Serial.print("ROS Initialized");
+  DEBUG_PRINT("Motor Setup Complete");
+  
+#ifndef DEBUG
+  setupROS();
+#endif
 
   delay(1000);
 }
@@ -91,6 +103,7 @@ float encoder_calculate_angular_speed(long delta_tick, long delta_time) {
 // --- IMU ---
 imu::Vector<3> euler_init;
 
+imu::Quaternion quat;
 imu::Vector<3> euler;
 imu::Vector<3> acc;
 imu::Vector<3> gyro;
@@ -100,6 +113,7 @@ void setupIMU() {
 }
 
 void imu_read() {
+  quat = imu_bno055.getQuat();
   euler = imu_bno055.getVector(Adafruit_BNO055::VECTOR_EULER);
   acc = imu_bno055.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
   gyro = imu_bno055.getVector(Adafruit_BNO055::VECTOR_GYROSCOPE);
@@ -135,6 +149,14 @@ float kd_right = 0.0;
 float roll_off_co = 0.8; // 40 / (s+40)
 
 // Robot State
+float x;
+float y;
+float z;
+float vx;
+float vy;
+float vz;
+float vth;
+
 float imu_theta = 0;
 float imu_accy = 0;
 float imu_omega = 0;
@@ -367,6 +389,7 @@ void update_motors() {
 
 // --- ROS ---
 ros::NodeHandle arduino_nh;
+ros::Time ros_time, ros_time_p;
 
 // Pub/Sub Declarations
 void cmd_velMsgRecv_cb(geometry_msgs::Twist &msg);
@@ -375,11 +398,18 @@ ros::Subscriber<geometry_msgs::Twist> velSub("cmd_vel", cmd_velMsgRecv_cb);
 nav_msgs::Odometry odom_msg;
 ros::Publisher odomPub("odom", &odom_msg);
 
+sensor_msgs::Imu imu_msg;
+ros::Publisher imuPub("imu_data", &imu_msg);
+
 // Setup
 void setupROS() {
   arduino_nh.initNode();
   arduino_nh.subscribe(velSub);
   arduino_nh.advertise(odomPub);
+  arduino_nh.advertise(imuPub);
+
+  ros_time = arduino_nh.now();
+  ros_time_p = arduino_nh.now();
 }
 
 // Pub/Sub Callbacks
@@ -388,8 +418,69 @@ void cmd_velMsgRecv_cb(geometry_msgs::Twist& msg) {
 }
 
 void publishOdom() {
+  ros_time_p = ros_time;
+  ros_time = arduino_nh.now();
+  geometry_msgs::Quaternion ros_quat;
+
+  ros_quat.x = quat.x(), 
+  ros_quat.y = quat.y();
+  ros_quat.z = quat.z();
+  ros_quat.w = quat.w();
+
+  odom_msg.header.stamp = ros_time;
+  odom_msg.header.frame_id = "odom";
+
+  odom_msg.pose.pose.position.x = x;
+  odom_msg.pose.pose.position.y = y;
+  odom_msg.pose.pose.position.z = z;
+  odom_msg.pose.pose.orientation = ros_quat;
+
+  odom_msg.child_frame_id = "base_link";
+  odom_msg.twist.twist.linear.x = vx;
+  odom_msg.twist.twist.linear.y = vy;
+  odom_msg.twist.twist.angular.z = vth;
+
+  odomPub.publish(&odom_msg);
 }
 
+void publishIMU() {
+  imu_msg.header.frame_id = "base_link";
+  imu_msg.orientation.x = quat.x();
+  imu_msg.orientation.y = quat.y();
+  imu_msg.orientation.z = quat.z();
+  imu_msg.orientation.w = quat.w();
+
+  imu_msg.angular_velocity.x = gyro.x(); 
+  imu_msg.angular_velocity.y = gyro.y(); 
+  imu_msg.angular_velocity.z = gyro.z(); 
+
+  imu_msg.linear_acceleration.x = acc.x();
+  imu_msg.linear_acceleration.y = acc.y();
+  imu_msg.linear_acceleration.z = acc.z();
+
+  imuPub.publish(&imu_msg);
+}
+
+void updateOdom(float dt) {
+  DEBUG_PRINT("dt: "); DEBUG_PRINT(dt);
+  vx += acc.x() * dt;
+  vy += acc.y() * dt;
+  //vz += acc.z() * dt;
+  
+  x += vx * dt;
+  y += vy * dt;
+  //z += vz * dt;  
+
+  vth += gyro.z();
+
+  DEBUG_PRINT(" vx: "); DEBUG_PRINT(vx);
+  DEBUG_PRINT(" vy: "); DEBUG_PRINT(vy);
+  DEBUG_PRINT(" vz: "); DEBUG_PRINT(vz);
+  DEBUG_PRINT(" x: "); DEBUG_PRINT(x);
+  DEBUG_PRINT(" y: "); DEBUG_PRINT(y);
+  DEBUG_PRINT(" z: "); DEBUG_PRINT(z);
+  DEBUG_PRINT("\r\n");
+}
 
 unsigned long time = 0;
 unsigned long time_p = 0;
@@ -398,12 +489,16 @@ void loop() {
   // 10Hz Update Rate
   time = millis(); 
   if (time - time_p > sample_time) {
-    time_p = time;
+
+#ifndef DEBUG
     publishOdom();
+    publishIMU();
     arduino_nh.spinOnce();
+#endif
 
     ctrl_get_current_wl_wr();
     ctrl_get_theta_accx_omega();
+    updateOdom((time - time_p) / 1000.0);
 
     if (time > 3000)
       ctrl_update_wd(0.5, 1.5);
@@ -412,5 +507,7 @@ void loop() {
     update_motors();
 
     ctrl_inner_loop_update();
+
+    time_p = time;
   }
 }

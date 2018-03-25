@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find furiguide_description)/urdf/furiguide.xacro'"/>
+  <node name="tf_map_world" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 1 world map" />
+  <node name="tf_map_odom" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 0 0 0 1 odom map" />
+  <node name="furiguide_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+</launch>

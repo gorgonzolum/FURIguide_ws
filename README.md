@@ -9,3 +9,8 @@ Targets ROS Lunar and ROS Kinetic.
 * ros-cv-camera
 * gazebo-ros
 * tf2, tf2_geometry_msgs
+
+## Running
+1. run `git submodule init` and `git submodule update` to pull the apriltags_ros repository in
+2. initialize your ROS environment (usually `./opt/ros/lunar/setup.bash`)
+3. run `catkin_make`

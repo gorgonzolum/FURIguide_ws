@@ -11,6 +11,9 @@
 #include <apriltags_ros/AprilTagDetection.h>
 #include <apriltags_ros/AprilTagDetectionArray.h>
 
+#include <move_base_msgs/MoveBaseAction.h>
+#include <actionlib/client/simple_action_client.h>
+
 #include "furiguide_nav_node.h"
 
 #define correctAngle(X, L) X > 0 ? X : X + L
@@ -24,9 +27,14 @@ int current_waypoint_id = -1;
 
 bool arrivedAtWaypoint = false;
 bool hasWaypoint = false;
+bool updateGoal = false;
 
 // Populated by the tf listener
 tf2_ros::Buffer tfBuffer;
+
+// actionlib alias
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+move_base_msgs::MoveBaseGoal nav_goal;
 
 double shortestAngle(double A, double B) {
   double diff = fmod(A - B, 2*M_PI);
@@ -40,16 +48,11 @@ double shortestAngle(double A, double B) {
 }
 
 void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
-  ROS_INFO("Processing Waypoint: %d", tag.id);
+  //ROS_INFO("Processing Waypoint: %d", tag.id);
 
   // ignore extraneous waypoints (avoid backtracking or seeing too far)
   if (tag.id < current_waypoint_id || tag.id > current_waypoint_id + 1) {
     return; // ignore this tag
-  }
-
-  // look for the next waypoint
-  if (tag.id == current_waypoint_id + 1) {
-    current_waypoint_id++;
   }
 
   geometry_msgs::TransformStamped transformStamped;
@@ -62,6 +65,14 @@ void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
     tf2::doTransform(tag.pose, current_waypoint_pose, transformStamped);
     arrivedAtWaypoint = false;
     hasWaypoint = true;
+    //ROS_INFO("way Quat: %f, %f, %f, %f", current_waypoint_pose.pose.orientation.x, current_waypoint_pose.pose.orientation.y, current_waypoint_pose.pose.orientation.z, current_waypoint_pose.pose.orientation.w); 
+
+    // look for the next waypoint
+    if (tag.id == current_waypoint_id + 1) {
+      current_waypoint_id++;
+      updateNavGoal();
+      updateGoal = true;
+    }
   }
   catch (tf2::TransformException &ex) {
     ROS_WARN("%s", ex.what());
@@ -72,7 +83,7 @@ void processAprilTag(const apriltags_ros::AprilTagDetection& tag) {
 void steerToWaypoint() {
   geometry_msgs::Twist twist;
   
-  ROS_INFO("Correcting robot angle to waypoint %d", current_waypoint_id);
+  //ROS_INFO("Correcting robot angle to waypoint %d", current_waypoint_id);
  
   // translate geometry_msgs into tf2 datatypes
   tf2::Quaternion odomQuat, waypointQuat;
@@ -95,16 +106,52 @@ void steerToWaypoint() {
   } else { // approach waypoint
     double tagHeading = atan2(diffVec.y(), diffVec.x());
     dTheta = shortestAngle(odomYaw, tagHeading);
-    ROS_INFO("Drive to Position: %f, %f, %f", (wayVec - posVec).x(), (wayVec - posVec).y(), (wayVec-posVec).z());
-    ROS_INFO("odom Quat: %f, %f, %f", odomQuat.getAxis().x(), odomQuat.getAxis().y(), odomQuat.getAxis().z());
+    //ROS_INFO("Drive to Position: %f, %f, %f", (wayVec - posVec).x(), (wayVec - posVec).y(), (wayVec-posVec).z());
+    //ROS_INFO("odom Quat: %f, %f, %f", odomQuat.getAxis().x(), odomQuat.getAxis().y(), odomQuat.getAxis().z());
   }
   
   // Correct for angle and drive forward
-  ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f", waypointYaw, odomYaw, dPos, dTheta);
+  //ROS_INFO("Tag: %f, Odom: %f, dPos: %f, Angle: %f", waypointYaw, odomYaw, dPos, dTheta);
   twist.linear.x = 0.5; 
   twist.angular.z = -1 * dTheta * 0.8; // ROS yaw is CCW increasing, MUST * -1 to account for this 
 
-  steer_twist_pub.publish(twist);
+  //steer_twist_pub.publish(twist);
+/*
+  ac.waitForResult()
+
+  if (ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+    ROS_INFO("Successfully arrived at goal");
+  else
+    ROS_INFO("Failed to arrive at goal...");
+*/
+}
+
+void updateNavGoal() {
+  /* send a goal coordinate to the nav stack */
+  tf2::Quaternion odomQuat, waypointQuat;
+  tf2::Vector3 posVec, wayVec, projVec;
+
+  // FIXME: project this onto the xy plane (?)
+  tf2::fromMsg(current_waypoint_pose.pose.orientation, waypointQuat);
+  tf2::convert(current_pose.pose.position, posVec);
+  tf2::convert(current_waypoint_pose.pose.position, wayVec);
+
+  projVec = tf2::quatRotate(waypointQuat, tf2::Vector3(1, 0, 0)).normalize();
+
+  nav_goal.target_pose.header.frame_id = "odom";
+  nav_goal.target_pose.header.stamp = ros::Time::now();
+
+  nav_goal.target_pose.pose.position.x = wayVec.x() + projVec.x();
+  nav_goal.target_pose.pose.position.y = wayVec.y() + projVec.y();
+
+  nav_goal.target_pose.pose.orientation.x = waypointQuat.x();
+  nav_goal.target_pose.pose.orientation.y = waypointQuat.y();
+  nav_goal.target_pose.pose.orientation.z = waypointQuat.z();
+  nav_goal.target_pose.pose.orientation.w = waypointQuat.w();
+
+  ROS_INFO("proj Vec: %f, %f, %f", projVec.x(), projVec.y(), projVec.z());
+  ROS_INFO("goal Pos: %f, %f, %f", nav_goal.target_pose.pose.position.x, nav_goal.target_pose.pose.position.y, nav_goal.target_pose.pose.position.z);
+  ROS_INFO("goal Quat: %f, %f, %f, %f", waypointQuat.x(), waypointQuat.y(), waypointQuat.z(), waypointQuat.w()); 
 }
 
 // Subscriber Callbacks
@@ -132,9 +179,23 @@ int main(int argc, char *argv[]) {
 
   tf2_ros::TransformListener tfListener(tfBuffer);
 
+  // spin an action client thread up
+  MoveBaseClient ac("move_base", true);
+
+  // wait for the move_base action server
+  while (!ac.waitForServer(ros::Duration(5.0))) {
+    ROS_INFO("Waiting for the move_base action server to come up");
+  }
+
   ros::Rate r(10);
   while (ros::ok()) {
     ros::spinOnce();
+
+    if (updateGoal) {
+      ROS_INFO("Sending Goal");
+      ac.sendGoal(nav_goal);
+      updateGoal = false;
+    }
 
     tag_pose_pub.publish(current_waypoint_pose);
     r.sleep(); 

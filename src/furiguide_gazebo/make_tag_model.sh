@@ -35,6 +35,7 @@ cat << EOF > ${TAGDIR}/model.sdf
 <sdf version='1.6'>
   <model name='${TAG}'>
     <static>true</static>
+    <pose frame=''>0 0 0 -1.5708 0 0</pose>
     <link name='link'>
       <pose frame=''>0 0 0 0 0 0</pose>
       <self_collide>0</self_collide>

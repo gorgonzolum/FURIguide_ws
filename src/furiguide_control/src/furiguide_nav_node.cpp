@@ -141,8 +141,8 @@ void updateNavGoal() {
   nav_goal.target_pose.header.frame_id = "odom";
   nav_goal.target_pose.header.stamp = ros::Time::now();
 
-  nav_goal.target_pose.pose.position.x = wayVec.x() + projVec.x();
-  nav_goal.target_pose.pose.position.y = wayVec.y() + projVec.y();
+  nav_goal.target_pose.pose.position.x = wayVec.x() + 4.0 * projVec.x();
+  nav_goal.target_pose.pose.position.y = wayVec.y() + 4.0 * projVec.y();
 
   nav_goal.target_pose.pose.orientation.x = waypointQuat.x();
   nav_goal.target_pose.pose.orientation.y = waypointQuat.y();

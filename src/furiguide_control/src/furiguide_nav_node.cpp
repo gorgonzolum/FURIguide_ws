@@ -13,6 +13,10 @@
 
 #include <move_base_msgs/MoveBaseAction.h>
 #include <actionlib/client/simple_action_client.h>
+#include <boost/config.hpp>
+#include <boost/graph/graph_traits.hpp>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/dijkstra_shortest_paths.hpp>
 
 #include "furiguide_nav_node.h"
 
@@ -28,6 +32,60 @@ int current_waypoint_id = -1;
 bool arrivedAtWaypoint = false;
 bool hasWaypoint = false;
 bool updateGoal = false;
+
+typedef boost::property<boost::edge_weight_t, int> EdgeWeightProperty;
+typedef boost::adjacency_list <boost::listS, boost::vecS, boost::directedS,
+  boost::property <boost::vertex_index_t, int>,
+  boost::property <boost::edge_weight_t, int> > Graph;
+
+typedef boost::graph_traits<Graph>::vertex_descriptor vertex_descriptor;
+typedef std::pair<int, int> Edge;
+Graph navGraph;
+std::vector<int> currentPath;
+
+Graph loadNavGraph() {
+  // Temporary hardcoded graph path
+  
+  int nodes[] = { 1, 2, 3, 4 };
+  Edge edge_array[] = { Edge(1, 2), Edge(1,3), Edge(2,4), Edge(3,4) };
+  int num_arcs = sizeof(edge_array) / sizeof(Edge);
+  int weights[] = { 1, 1, 1, 3 };
+
+  Graph g(edge_array, edge_array + num_arcs, weights, sizeof(nodes) / sizeof(int));
+ 
+ /* 
+  boost::add_edge(1, 2, 1, g);
+  boost::add_edge(1, 3, 1, g);
+  boost::add_edge(2, 4, 1, g);
+  boost::add_edge(3, 4, 3, g);
+*/
+  return g;
+}
+
+std::vector<int> findWaypointPath(int start_id, int goal_id, const Graph graph_in) {
+  std::vector<vertex_descriptor> p(num_vertices(graph_in));
+  std::vector<int> d(num_vertices(graph_in));
+
+  boost::graph_traits<Graph>::vertex_descriptor start = boost::vertex(start_id, graph_in);
+  boost::dijkstra_shortest_paths(graph_in, boost::vertex(start_id, graph_in),
+                                boost::predecessor_map(boost::make_iterator_property_map(p.begin(), get(boost::vertex_index, graph_in))).
+                                distance_map(boost::make_iterator_property_map(d.begin(), get(boost::vertex_index, graph_in)))); 
+  
+  //boost::property_map<graph, boost::edge_weight_t>::type weightmap = get(boost::edge_weight, navgraph)
+  
+  std::vector<int> path;
+  boost::property_map<Graph, boost::vertex_index_t>::type vidxmap = get(boost::vertex_index, graph_in);
+  boost::graph_traits<Graph>::vertex_descriptor current = boost::vertex(goal_id, graph_in);
+  while (current != start) {
+    int id = get(vidxmap, current);
+    path.push_back(id);
+
+    current = p[current];
+  }
+  path.push_back(start_id);
+
+  return path;
+}
 
 // Populated by the tf listener
 tf2_ros::Buffer tfBuffer;
@@ -181,6 +239,11 @@ int main(int argc, char *argv[]) {
 
   // spin an action client thread up
   MoveBaseClient ac("move_base", true);
+
+  navGraph = loadNavGraph();
+  
+  // TODO: load this path at runtime
+  currentPath = findWaypointPath(1, 4, navGraph);
 
   // wait for the move_base action server
   while (!ac.waitForServer(ros::Duration(5.0))) {
